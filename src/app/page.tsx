@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { buttonVariants } from '@/components/ui/button'
 import {
   Card,
@@ -12,13 +13,14 @@ export default function Home() {
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   )
+  const ornnConfigured = Boolean(process.env.ORNN_API_KEY)
 
   return (
     <main className="mx-auto flex min-h-svh max-w-3xl flex-col items-center justify-center gap-8 p-8">
       <div className="text-center">
-        <h1 className="text-4xl font-semibold tracking-tight">Builders Cup X</h1>
+        <h1 className="text-4xl font-semibold tracking-tight">GPU Reservation Optimizer</h1>
         <p className="mt-2 text-muted-foreground">
-          Next.js 16 · Supabase · Tailwind · shadcn/ui
+          Ornn forward curves × your GPU telemetry — time reservations, quantify savings.
         </p>
       </div>
 
@@ -26,12 +28,12 @@ export default function Home() {
         <CardHeader>
           <CardTitle>Environment</CardTitle>
           <CardDescription>
-            Delete this card once the app has real content.
+            Backend proof of life. Fill in <code>.env.local</code> to enable persistence.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex items-center justify-between">
-          <span className="text-sm">
-            Supabase env vars:{' '}
+        <CardContent className="space-y-2 text-sm">
+          <div>
+            Supabase:{' '}
             <span
               className={
                 supabaseConfigured
@@ -39,19 +41,35 @@ export default function Home() {
                   : 'font-medium text-amber-600 dark:text-amber-400'
               }
             >
-              {supabaseConfigured ? 'detected' : 'not set — copy .env.local.example'}
+              {supabaseConfigured ? 'configured' : 'not set — persistence disabled'}
             </span>
-          </span>
-          <a
-            className={buttonVariants({ variant: 'outline' })}
-            href="https://supabase.com/dashboard"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Supabase dashboard
-          </a>
+          </div>
+          <div>
+            Ornn API key:{' '}
+            <span
+              className={
+                ornnConfigured
+                  ? 'font-medium text-green-600 dark:text-green-400'
+                  : 'font-medium text-amber-600 dark:text-amber-400'
+              }
+            >
+              {ornnConfigured ? 'detected' : 'using fixture curve'}
+            </span>
+          </div>
+          <div>
+            Datadog: <span className="font-medium">synthetic (fixture)</span>
+          </div>
         </CardContent>
       </Card>
+
+      <div className="flex gap-3">
+        <Link className={buttonVariants({ variant: 'default' })} href="/sandbox">
+          Open sandbox
+        </Link>
+        <Link className={buttonVariants({ variant: 'outline' })} href="/debug">
+          Debug (API dumps)
+        </Link>
+      </div>
     </main>
   )
 }
