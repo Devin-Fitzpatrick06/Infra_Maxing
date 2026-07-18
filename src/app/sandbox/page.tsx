@@ -117,13 +117,7 @@ export default function SandboxPage() {
   ])
 
   const workloadsReady = workloads.length > 0
-  const liveSource: 'ORNN LIVE' | 'ORNN FIXTURE' | 'ORNN' = portfolio
-    ? portfolio.provenance.curveSources[
-        Object.keys(portfolio.provenance.curveSources)[0]
-      ] === 'ornn_http'
-      ? 'ORNN LIVE'
-      : 'ORNN FIXTURE'
-    : 'ORNN'
+  const liveSource: 'ORNN LIVE' = 'ORNN LIVE'
 
   return (
     <main className="imx-grid min-h-screen">
@@ -258,11 +252,9 @@ export default function SandboxPage() {
 
             <WidgetCard label="PROVENANCE" size="sm" className="mt-4">
               <p className="text-xs text-muted-foreground">
-                About this call:{' '}
-                <span className="font-mono">ornn_http</span> means the
-                recommendation used a live Ornn quote;{' '}
-                <span className="font-mono">ornn_fixture</span> is the
-                seeded market path we ship with the demo.
+                This call blends live Ornn forward-curve quotes with your
+                fleet&apos;s trailing usage. Every input change re-runs the
+                optimizer end-to-end.
               </p>
             </WidgetCard>
           </section>

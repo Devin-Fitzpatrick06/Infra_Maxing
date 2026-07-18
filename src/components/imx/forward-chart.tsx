@@ -20,6 +20,7 @@ type StrategyKey = 'payAsYouGo' | 'smartBlend' | 'reserveNow'
 interface ForwardChartProps {
   curve: CurvePoint[]
   highlightStrategy?: StrategyKey
+  spotUsdPerHour?: number
 }
 
 const MONTHS = [
@@ -54,8 +55,14 @@ const fillOpacityFor = (strategy?: StrategyKey) => {
   return 0.22
 }
 
-export function ForwardChart({ curve, highlightStrategy }: ForwardChartProps) {
-  const spotPrice = curve.length > 0 ? curve[0].price_usd_per_hour : 0
+export function ForwardChart({
+  curve,
+  highlightStrategy,
+  spotUsdPerHour,
+}: ForwardChartProps) {
+  const spotPrice =
+    spotUsdPerHour ??
+    (curve.length > 0 ? curve[0].price_usd_per_hour : 0)
 
   const data = curve.map((point) => {
     const forward = point.price_usd_per_hour

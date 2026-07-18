@@ -27,7 +27,7 @@ export function GpuCompare({ rows, selected, onSelect }: GpuCompareProps) {
     )
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex max-h-[300px] flex-col gap-2 overflow-y-auto pr-1">
       {rows.map((r) => {
         const isSelected = r.gpuType === selected
         const isBest = best?.gpuType === r.gpuType && rows.length > 1

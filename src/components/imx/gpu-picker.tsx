@@ -21,7 +21,7 @@ export function GpuPicker({ chips, value, onChange }: GpuPickerProps) {
   }
   return (
     <ToggleGroup
-      className="w-full"
+      className="w-full flex-wrap"
       size="sm"
       variant="outline"
       orientation="horizontal"
@@ -36,7 +36,7 @@ export function GpuPicker({ chips, value, onChange }: GpuPickerProps) {
           key={c.gpuType}
           value={c.gpuType}
           aria-label={c.displayName}
-          className="flex-1"
+          className="min-w-[64px] flex-1 basis-[64px]"
         >
           {c.gpuType}
         </ToggleGroupItem>

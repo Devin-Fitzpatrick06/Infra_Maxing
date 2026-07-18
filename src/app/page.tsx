@@ -144,20 +144,20 @@ export default function Home() {
 
           <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
             <StatWidget
-              label="H100 SPOT"
-              value="$2.62"
-              delta="+3.1%"
+              label="A100 SPOT"
+              value="$0.99"
+              delta="+2.1%"
               deltaTone="up"
-              hint="24h drift"
-              sparkline={[2.4, 2.45, 2.5, 2.48, 2.55, 2.6, 2.58, 2.62]}
+              hint="ORNN hourly index"
+              sparkline={[0.92, 0.94, 0.95, 0.94, 0.96, 0.97, 0.98, 0.99]}
             />
             <StatWidget
               label="180-DAY FORWARD"
-              value="$1.91"
+              value="$0.72"
               delta="-27%"
               deltaTone="down"
               hint="vs. spot today"
-              sparkline={[2.4, 2.3, 2.2, 2.15, 2.05, 2.0, 1.95, 1.91]}
+              sparkline={[0.92, 0.88, 0.85, 0.82, 0.78, 0.76, 0.74, 0.72]}
               sparkColor="var(--primary)"
             />
             <StatWidget
@@ -179,7 +179,9 @@ export default function Home() {
         <span>Built for Builders Cup X · 2026-07-18</span>
         <div className="flex items-center gap-2">
           <LiveBadge source="ORNN" />
-          <span className="text-muted-foreground">H100 · A10G</span>
+          <span className="text-muted-foreground">
+            A100 · B200 · H100 · H200 · RTX 5090 · RTX PRO 6000
+          </span>
         </div>
       </footer>
     </main>

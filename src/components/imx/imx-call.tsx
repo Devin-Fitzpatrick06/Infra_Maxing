@@ -22,10 +22,7 @@ export function ImxCall({ portfolio, loading = false }: ImxCallProps) {
   const { headline, rationale } = portfolio.recommendation
   const horizonMonths = portfolio.inputs.horizonMonths
 
-  const sources = Object.values(portfolio.provenance.curveSources)
-  const firstSource = sources[0] ?? 'ornn_fixture'
-  const sourceLabelUpper =
-    firstSource === 'ornn_http' ? 'ORNN LIVE' : 'ORNN FIXTURE'
+  const sourceLabelUpper = 'ORNN LIVE'
 
   const savingUsd = portfolio.totals.savingUsd
   const savingPct = portfolio.totals.savingPct

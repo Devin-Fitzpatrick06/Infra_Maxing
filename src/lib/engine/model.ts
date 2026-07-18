@@ -1,20 +1,13 @@
 // Pure recommendation engine. Deterministic given the same inputs.
-// The math is intentionally simple and legible so it can be audited on stage:
 //
-//   1. Estimate the workload's steady demand (p25 daily GPU-hours) and its
-//      mean demand, both derived from `usage` history.
-//   2. Apply `usageBias` uniformly (stress test).
-//   3. Apply the scenario perturbation to the forward curve.
-//   4. For each month in the horizon, compute:
-//        - baseline: all on-demand at the curve price for that month
-//        - strategy: `reservedPct` * mean_hours locked at a discounted price
-//          (from DEFAULT_DISCOUNT_SCHEDULE), rest on-demand at the curve
-//   5. Sum both, take the delta → projected saving.
-//   6. Confidence band = ±(curve stdev / mean) * saving, floored at 5%.
-//   7. Break-even month = first month where cumulative strategy cost catches
-//      up to a hypothetical "wait one month, then reserve" alternative.
+// The curve is treated as authoritative: curve[0] is today's spot, curve[N]
+// is the forward price at day N. Locking a reservation means paying the
+// horizon forward — no synthetic discount applied on top. The optional
+// `discounts` schedule is only consulted if the caller wants to override
+// the horizon-forward price with an explicit rate.
 
 import {
+  averagePriceAcrossHorizon,
   curveStdev,
   meanDailyHours,
   priceAtMonth,
@@ -22,7 +15,6 @@ import {
 } from './math'
 import { applyScenario } from './scenarios'
 import {
-  DEFAULT_DISCOUNT_SCHEDULE,
   type EngineArgs,
   type EngineOutput,
   type RecommendedMixRow,
@@ -31,25 +23,36 @@ import {
 const DAYS_PER_MONTH = 30
 
 export function recommend(args: EngineArgs): EngineOutput {
-  const {
-    gpuType,
-    curve,
-    usage,
-    inputs,
-    discounts = DEFAULT_DISCOUNT_SCHEDULE,
-  } = args
+  const { gpuType, curve, usage, inputs, discounts } = args
 
   const scenarioCurve = applyScenario(curve, inputs.scenario)
   const meanHours = meanDailyHours(usage) * (1 + inputs.usageBias)
   const floorHours = steadyFloorHours(usage) * (1 + inputs.usageBias)
 
-  const discount = discounts[inputs.horizonMonths] ?? 0.3
+  // reservedPct=0 truly means "reserve nothing" — pay everything on-demand.
+  // For any positive share, we still clamp above the steady floor (you'd
+  // never reserve less than the demand you know you always run) and below
+  // mean demand (reserving above the mean is capacity you won't consume).
   const reservedMonthlyHours =
-    Math.min(meanHours, Math.max(floorHours, meanHours * inputs.reservedPct)) *
-    DAYS_PER_MONTH
+    (inputs.reservedPct <= 0
+      ? 0
+      : Math.min(
+          meanHours,
+          Math.max(floorHours, meanHours * inputs.reservedPct),
+        )) * DAYS_PER_MONTH
 
-  // Lock the reservation price at month 0 (that's the whole thesis — timing).
-  const lockPrice = priceAtMonth(scenarioCurve, 0) * (1 - discount)
+  // The forward curve is authoritative. Locking a reservation now means paying
+  // the average forward price across the horizon — that's what the curve is
+  // literally quoting. If the caller supplies an explicit `discounts` override,
+  // apply it as a discount off today's spot instead (used for the sandbox's
+  // "forward vs today" what-if slider when there's no live curve to trust).
+  const spotToday = priceAtMonth(scenarioCurve, 0)
+  const horizonForward = averagePriceAcrossHorizon(scenarioCurve, inputs.horizonMonths)
+  const explicitDiscount = discounts?.[inputs.horizonMonths]
+  const lockPrice =
+    explicitDiscount !== undefined
+      ? spotToday * (1 - explicitDiscount)
+      : horizonForward
 
   const mix: RecommendedMixRow[] = []
   let baselineCost = 0

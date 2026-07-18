@@ -7,6 +7,7 @@ export interface LiveBadgeProps {
 }
 
 export function LiveBadge({ source, className }: LiveBadgeProps) {
+  const label = source ? source.toUpperCase() : 'ORNN LIVE'
   return (
     <span
       data-slot="live-badge"
@@ -15,8 +16,8 @@ export function LiveBadge({ source, className }: LiveBadgeProps) {
         className,
       )}
     >
-      <PulseDot />
-      {source ? source.toUpperCase() : 'LIVE'}
+      <PulseDot tone="live" />
+      {label}
     </span>
   )
 }

@@ -6,6 +6,11 @@ import { ForwardChart } from '@/components/imx/forward-chart'
 import { StrategyChip, type StrategyKey } from '@/components/imx/strategy-chip'
 import { GpuPicker } from '@/components/imx/gpu-picker'
 import { GpuCompare, type GpuCompareRow } from '@/components/imx/gpu-compare'
+import { SpotHistoryChart } from '@/components/imx/spot-history-chart'
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from '@/components/ui/toggle-group'
 import {
   BackButton,
   Glossary,
@@ -33,6 +38,7 @@ interface ForwardStrategiesResponse {
   curve: CurvePoint[]
   curveSource?: string
   curveFetchedAt?: string
+  spotUsdPerHour?: number
   onDemandCostUsd: number
   strategies: Record<StrategyKey, StrategyRow>
 }
@@ -44,13 +50,17 @@ interface Chip {
 
 export default function ForwardPage() {
   const [chips, setChips] = useState<Chip[]>([])
-  const [gpuType, setGpuType] = useState<string>('H100')
+  const [gpuType, setGpuType] = useState<string>('A100')
   const [dataByGpu, setDataByGpu] = useState<
     Record<string, ForwardStrategiesResponse>
   >({})
   const [loadingByGpu, setLoadingByGpu] = useState<Record<string, boolean>>({})
   const [errorByGpu, setErrorByGpu] = useState<Record<string, boolean>>({})
   const [selected, setSelected] = useState<StrategyKey>('smartBlend')
+  const [historyDays, setHistoryDays] = useState<30 | 90 | 365>(90)
+  const [historyPoints, setHistoryPoints] = useState<CurvePoint[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -67,8 +77,12 @@ export default function ForwardPage() {
       .catch(() => {
         if (cancelled) return
         setChips([
+          { gpuType: 'A100', displayName: 'NVIDIA A100' },
+          { gpuType: 'B200', displayName: 'NVIDIA B200' },
           { gpuType: 'H100', displayName: 'NVIDIA H100' },
-          { gpuType: 'A10G', displayName: 'NVIDIA A10G' },
+          { gpuType: 'H200', displayName: 'NVIDIA H200' },
+          { gpuType: 'RTX 5090', displayName: 'NVIDIA RTX 5090' },
+          { gpuType: 'RTX PRO 6000', displayName: 'NVIDIA RTX PRO 6000' },
         ])
       })
     return () => {
@@ -110,6 +124,38 @@ export default function ForwardPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chips])
+
+  useEffect(() => {
+    let cancelled = false
+    setHistoryLoading(true)
+    setHistoryError(null)
+    const params = new URLSearchParams({
+      gpuType,
+      days: String(historyDays),
+    })
+    fetch(`/api/ornn/spot-history?${params}`)
+      .then(async (r) => {
+        const j = await r.json()
+        if (!r.ok) throw new Error(j?.error ?? `HTTP ${r.status}`)
+        return j as { points: CurvePoint[] }
+      })
+      .then((j) => {
+        if (cancelled) return
+        setHistoryPoints(j.points)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setHistoryError(err instanceof Error ? err.message : 'history failed')
+        setHistoryPoints([])
+      })
+      .finally(() => {
+        if (cancelled) return
+        setHistoryLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [gpuType, historyDays])
 
   const data = dataByGpu[gpuType]
   const loading = loadingByGpu[gpuType] ?? true
@@ -158,15 +204,7 @@ export default function ForwardPage() {
               Hedging with real-time Ornn forwards.
             </p>
           </div>
-          {data ? (
-            <LiveBadge
-              source={
-                data.curveSource === 'ornn_http' ? 'ORNN LIVE' : 'ORNN FIXTURE'
-              }
-            />
-          ) : (
-            <LiveBadge />
-          )}
+          <LiveBadge source="ORNN LIVE" />
         </div>
 
         <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -203,6 +241,52 @@ export default function ForwardPage() {
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12 lg:col-span-8">
             <WidgetCard
+              label="SPOT HISTORY"
+              className="mb-4"
+              action={
+                <div className="flex items-center gap-2">
+                  <ToggleGroup
+                    size="sm"
+                    variant="outline"
+                    orientation="horizontal"
+                    value={[String(historyDays)]}
+                    onValueChange={(next) => {
+                      const n = Number(next[0])
+                      if (n === 30 || n === 90 || n === 365) setHistoryDays(n)
+                    }}
+                  >
+                    {[30, 90, 365].map((d) => (
+                      <ToggleGroupItem
+                        key={d}
+                        value={String(d)}
+                        aria-label={`${d} days`}
+                      >
+                        {d === 365 ? '1Y' : `${d}D`}
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
+                  <LiveBadge source="ORNN LIVE" />
+                </div>
+              }
+            >
+              <p className="mb-2 text-xs text-muted-foreground">
+                Trailing spot for {gpuType} — where we came from, priced against
+                the forward below.
+              </p>
+              {historyLoading ? (
+                <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
+                  Loading history…
+                </div>
+              ) : historyError ? (
+                <div className="flex h-[200px] items-center justify-center text-sm text-destructive">
+                  {historyError}
+                </div>
+              ) : historyPoints.length > 0 ? (
+                <SpotHistoryChart points={historyPoints} />
+              ) : null}
+            </WidgetCard>
+
+            <WidgetCard
               label="SPOT VS FORWARD"
               size="lg"
               action={
@@ -230,6 +314,7 @@ export default function ForwardPage() {
                 <ForwardChart
                   curve={data.curve}
                   highlightStrategy={selected}
+                  spotUsdPerHour={data.spotUsdPerHour}
                 />
               ) : null}
             </WidgetCard>

@@ -59,6 +59,19 @@ export function priceAtMonth(curve: CurvePoint[], monthOffset: number): number {
   return last.price_usd_per_hour
 }
 
+// Mean forward price across a `months`-long window starting at curve[0].
+// This is what a reservation locked today over that horizon literally costs
+// per GPU-hour, assuming the curve is the authoritative price series.
+export function averagePriceAcrossHorizon(
+  curve: CurvePoint[],
+  months: number,
+): number {
+  if (curve.length === 0 || months <= 0) return 0
+  let sum = 0
+  for (let m = 0; m < months; m++) sum += priceAtMonth(curve, m)
+  return sum / months
+}
+
 // Standard deviation of curve prices, useful for a naive confidence band.
 export function curveStdev(curve: CurvePoint[]): number {
   if (curve.length < 2) return 0

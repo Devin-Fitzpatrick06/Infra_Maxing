@@ -92,12 +92,18 @@ function toEngineInputs(inputs: PortfolioInputs, gpuType: string) {
   }
 }
 
-// Override the engine's discount schedule with a single value derived from
-// the forward-vs-today slider. Negative percentages = forward cheaper.
-function toDiscountOverride(forwardVsTodayPct: number, horizonMonths: number) {
+// Turn the sandbox's "forward vs today" slider into an engine discount override.
+// Slider at 0 → return `undefined` so the engine trusts the curve's own
+// horizon-average forward price. Any other value overrides with an explicit
+// discount off today's spot — that's the what-if channel.
+function toDiscountOverride(
+  forwardVsTodayPct: number,
+  horizonMonths: number,
+): Record<number, number> | undefined {
   const pct = clamp(forwardVsTodayPct, -60, 0)
-  const discount = -pct / 100 // -27 => 0.27 discount
-  return { [horizonMonths]: discount } as Record<number, number>
+  if (pct === 0) return undefined
+  const discount = -pct / 100 // -27 => 0.27 discount off spot
+  return { [horizonMonths]: discount }
 }
 
 function clamp(n: number, lo: number, hi: number): number {

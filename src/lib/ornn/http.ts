@@ -6,7 +6,13 @@
 // Set ORNN_BASE_URL + ORNN_API_KEY in .env.local. Auth defaults to Bearer;
 // override with ORNN_AUTH_HEADER=x-api-key if the API uses that pattern.
 
-import type { Chip, CurvePoint, CurveSnapshot, OrnnClient } from './types'
+import type {
+  Chip,
+  CurvePoint,
+  CurveSnapshot,
+  OrnnClient,
+  SpotHistorySnapshot,
+} from './types'
 
 interface HttpOrnnOptions {
   baseUrl: string
@@ -122,6 +128,58 @@ export class HttpOrnnClient implements OrnnClient {
     }
     throw new Error(
       `Ornn HTTP: no candidate endpoint returned a usable curve for ${gpuType}`,
+    )
+  }
+
+  async getSpotHistory(
+    gpuType: string,
+    days: number,
+  ): Promise<SpotHistorySnapshot> {
+    // Ornn's history endpoint isn't in the discovery spike yet; probe a small
+    // list of plausible shapes. If none match, throw so FallbackOrnnClient
+    // hands off to the fixture.
+    const toDate = new Date()
+    const fromDate = new Date(toDate.getTime() - days * 86_400_000)
+    const iso = (d: Date) => d.toISOString().slice(0, 10)
+    const params = new URLSearchParams({
+      gpu_type: gpuType,
+      instrument: gpuType,
+      chip: gpuType,
+      days: String(days),
+      from: iso(fromDate),
+      to: iso(toDate),
+    })
+    const candidates = [
+      `/v1/spot/history?${params}`,
+      `/v1/spot?${params}`,
+      `/v1/prices/spot?${params}`,
+      `/v1/history/spot?${params}`,
+      `/spot-history?${params}`,
+      `/prices?type=spot&${params}`,
+    ]
+    for (const path of candidates) {
+      try {
+        const res = await this.fetchWithTimeout(new URL(path, this.opts.baseUrl))
+        if (!res.ok) continue
+        const json = (await res.json()) as UnknownCurveResponse
+        const points = normalizeCurve(json)
+        if (points.length > 0) {
+          return {
+            gpuType,
+            fetchedAt: new Date().toISOString(),
+            fromDate: iso(fromDate),
+            toDate: iso(toDate),
+            points,
+            source: 'ornn_http',
+            rawResponse: json,
+          }
+        }
+      } catch {
+        // try next
+      }
+    }
+    throw new Error(
+      `Ornn HTTP: no candidate endpoint returned usable spot history for ${gpuType}`,
     )
   }
 }

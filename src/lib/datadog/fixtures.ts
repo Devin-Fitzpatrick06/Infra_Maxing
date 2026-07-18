@@ -28,35 +28,39 @@ const WORKLOADS: DatadogWorkload[] = [
   },
   {
     id: '22222222-2222-2222-2222-222222222222',
-    name: 'training-experiments-h100',
-    gpuType: 'H100',
+    name: 'training-experiments-b200',
+    gpuType: 'B200',
     archetype: 'bursty_training',
     tags: {
       workload: 'training-experiments',
       env: 'research',
       team: 'ml-research',
-      gpu_type: 'H100',
+      gpu_type: 'B200',
     },
   },
   {
     id: '33333333-3333-3333-3333-333333333333',
-    name: 'dev-notebooks-a10g',
-    gpuType: 'A10G',
+    name: 'dev-notebooks-a100',
+    gpuType: 'A100',
     archetype: 'interactive_dev',
     tags: {
       workload: 'dev-notebooks',
       env: 'dev',
       team: 'platform',
-      gpu_type: 'A10G',
+      gpu_type: 'A100',
     },
   },
 ]
 
-// Anchor prices per chip. These are the "market rate" the fixture prices
-// against; they drift over time to mimic a real market.
+// Anchor prices per chip. Mirror ORNN's Compute Price Index tiers. Kept in
+// sync with src/lib/ornn/fixtures.ts.
 const ANCHOR_PRICE_USD_PER_HOUR: Record<string, number> = {
-  H100: 2.6,
-  A10G: 0.9,
+  A100: 0.99,
+  B200: 5.5,
+  H100: 2.4,
+  H200: 3.1,
+  'RTX 5090': 0.85,
+  'RTX PRO 6000': 1.6,
 }
 
 // Base capacity per archetype (GPU-hours available per day, before demand shape).

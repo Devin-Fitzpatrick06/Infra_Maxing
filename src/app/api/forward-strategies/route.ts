@@ -45,10 +45,18 @@ export async function POST(req: NextRequest) {
     const ornn = getOrnnClient()
     const datadog = getDatadogClient()
 
-    const [snap, allWorkloads] = await Promise.all([
+    const [snap, spotSnap, allWorkloads] = await Promise.all([
       ornn.getForwardCurve(gpuType, horizonDays),
+      // Pull the most recent spot so the "today" reference isn't just curve[0]
+      // — if the forward curve starts weeks out, curve[0] can silently drift
+      // from actual today. Trailing 7 days is enough to nail the last close.
+      ornn.getSpotHistory(gpuType, 7).catch(() => null),
       datadog.listWorkloads(),
     ])
+    const spotUsdPerHour =
+      spotSnap && spotSnap.points.length > 0
+        ? spotSnap.points[spotSnap.points.length - 1].price_usd_per_hour
+        : snap.points[0]?.price_usd_per_hour ?? 0
 
     const gpuLower = gpuType.toLowerCase()
     const matched = allWorkloads.filter(
@@ -81,6 +89,7 @@ export async function POST(req: NextRequest) {
       curve: snap.points,
       curveSource: snap.source,
       curveFetchedAt: snap.fetchedAt,
+      spotUsdPerHour: Number(spotUsdPerHour.toFixed(4)),
       onDemandCostUsd: round2(onDemand),
       strategies: {
         payAsYouGo: {

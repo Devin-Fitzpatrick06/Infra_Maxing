@@ -1,6 +1,11 @@
 import { FixtureOrnnClient } from './fixtures'
 import { HttpOrnnClient } from './http'
-import type { Chip, CurveSnapshot, OrnnClient } from './types'
+import type {
+  Chip,
+  CurveSnapshot,
+  OrnnClient,
+  SpotHistorySnapshot,
+} from './types'
 
 // Park the cached client on globalThis so it survives Next dev HMR — otherwise
 // each request re-instantiates the module and re-probes the (unreachable)
@@ -34,24 +39,35 @@ export function getOrnnClient(): OrnnClient {
   return client
 }
 
+const PRIMARY_RETRY_MS = 60_000
+
 class FallbackOrnnClient implements OrnnClient {
   // Once the primary fails, don't hammer the unreachable host on every request.
-  // A fresh dev server restart resets this and re-probes the real API.
-  private primaryDead = false
+  // We record the timestamp of the failure and re-probe after PRIMARY_RETRY_MS
+  // so transient network hiccups heal automatically.
+  private primaryDeadUntil = 0
 
   constructor(
     private readonly primary: OrnnClient,
     private readonly fallback: OrnnClient,
   ) {}
 
+  private primaryReady(): boolean {
+    return Date.now() >= this.primaryDeadUntil
+  }
+
+  private markPrimaryDead(): void {
+    this.primaryDeadUntil = Date.now() + PRIMARY_RETRY_MS
+  }
+
   async listChips(): Promise<Chip[]> {
-    if (!this.primaryDead) {
+    if (this.primaryReady()) {
       try {
         const chips = await this.primary.listChips()
         if (chips.length > 0) return chips
-        this.primaryDead = true
+        this.markPrimaryDead()
       } catch {
-        this.primaryDead = true
+        this.markPrimaryDead()
       }
     }
     return this.fallback.listChips()
@@ -61,13 +77,28 @@ class FallbackOrnnClient implements OrnnClient {
     gpuType: string,
     horizonDays: number,
   ): Promise<CurveSnapshot> {
-    if (!this.primaryDead) {
+    if (this.primaryReady()) {
       try {
         return await this.primary.getForwardCurve(gpuType, horizonDays)
       } catch {
-        this.primaryDead = true
+        this.markPrimaryDead()
       }
     }
     return this.fallback.getForwardCurve(gpuType, horizonDays)
+  }
+
+  async getSpotHistory(
+    gpuType: string,
+    days: number,
+  ): Promise<SpotHistorySnapshot> {
+    if (this.primaryReady()) {
+      try {
+        return await this.primary.getSpotHistory(gpuType, days)
+      } catch {
+        // Spot history is the most-likely-missing endpoint; if it 404s the
+        // forward endpoint may still be fine. Don't kill the whole primary.
+      }
+    }
+    return this.fallback.getSpotHistory(gpuType, days)
   }
 }
