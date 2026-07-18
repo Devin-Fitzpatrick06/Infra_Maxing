@@ -15,9 +15,11 @@ interface CurvePoint {
   price_usd_per_hour: number
 }
 
+type StrategyKey = 'payAsYouGo' | 'smartBlend' | 'reserveNow'
+
 interface ForwardChartProps {
   curve: CurvePoint[]
-  highlightStrategy?: 'payAsYouGo' | 'smartBlend' | 'reserveNow'
+  highlightStrategy?: StrategyKey
 }
 
 const MONTHS = [
@@ -35,6 +37,8 @@ const MONTHS = [
   'Dec',
 ]
 
+const HEDGE_BLUE = 'oklch(0.72 0.16 240)'
+
 const formatDayLabel = (raw: string) => {
   if (!raw) return ''
   const d = new Date(raw)
@@ -44,12 +48,10 @@ const formatDayLabel = (raw: string) => {
   return raw
 }
 
-const fillOpacityFor = (
-  strategy?: 'payAsYouGo' | 'smartBlend' | 'reserveNow',
-) => {
-  if (strategy === 'payAsYouGo') return 0.05
-  if (strategy === 'reserveNow') return 0.28
-  return 0.16
+const fillOpacityFor = (strategy?: StrategyKey) => {
+  if (strategy === 'payAsYouGo') return 0.08
+  if (strategy === 'reserveNow') return 0.32
+  return 0.22
 }
 
 export function ForwardChart({ curve, highlightStrategy }: ForwardChartProps) {
@@ -66,7 +68,9 @@ export function ForwardChart({ curve, highlightStrategy }: ForwardChartProps) {
     }
   })
 
-  const mintOpacity = fillOpacityFor(highlightStrategy)
+  const hedgeOpacity = fillOpacityFor(highlightStrategy)
+  const useStripes = highlightStrategy === 'smartBlend'
+  const hedgeFill = useStripes ? 'url(#hedgeStripes)' : HEDGE_BLUE
 
   return (
     <ResponsiveContainer width="100%" height={360}>
@@ -74,6 +78,26 @@ export function ForwardChart({ curve, highlightStrategy }: ForwardChartProps) {
         data={data}
         margin={{ top: 12, right: 16, left: 4, bottom: 8 }}
       >
+        <defs>
+          <pattern
+            id="hedgeStripes"
+            patternUnits="userSpaceOnUse"
+            width="8"
+            height="8"
+            patternTransform="rotate(45)"
+          >
+            <rect width="8" height="8" fill={HEDGE_BLUE} fillOpacity={0.18} />
+            <line
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="8"
+              stroke={HEDGE_BLUE}
+              strokeWidth="3"
+              strokeOpacity={0.9}
+            />
+          </pattern>
+        </defs>
         <CartesianGrid
           vertical={false}
           strokeDasharray="4 8"
@@ -127,9 +151,11 @@ export function ForwardChart({ curve, highlightStrategy }: ForwardChartProps) {
           type="monotone"
           dataKey="hedgeDelta"
           stackId="hedge"
-          stroke="none"
-          fill="var(--chart-1)"
-          fillOpacity={mintOpacity}
+          stroke={HEDGE_BLUE}
+          strokeWidth={useStripes ? 1.5 : 1}
+          strokeOpacity={useStripes ? 0.8 : 0.4}
+          fill={hedgeFill}
+          fillOpacity={useStripes ? 1 : hedgeOpacity}
           isAnimationActive={false}
           activeDot={false}
         />
@@ -147,7 +173,7 @@ export function ForwardChart({ curve, highlightStrategy }: ForwardChartProps) {
           dataKey="forward"
           stroke="var(--chart-1)"
           fill="var(--chart-1)"
-          fillOpacity={mintOpacity}
+          fillOpacity={0.08}
           strokeWidth={2}
           dot={false}
           isAnimationActive={false}

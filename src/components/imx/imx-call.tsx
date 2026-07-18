@@ -1,17 +1,14 @@
 'use client'
 
 import type { PortfolioOutput } from '@/lib/engine/portfolio'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { formatPct, formatSignedUsd, formatUsd } from '@/lib/imx/format'
+import {
+  Gauge,
+  LiveBadge,
+  StatWidget,
+  WidgetCard,
+} from '@/components/imx/widget'
 import { ComparisonBars } from './comparison-bars'
 
 interface ImxCallProps {
@@ -20,116 +17,138 @@ interface ImxCallProps {
 }
 
 export function ImxCall({ portfolio, loading = false }: ImxCallProps) {
-  const isEmpty = portfolio.provenance.workloadCount === 0
+  const workloadCount = portfolio.provenance.workloadCount
+  const isEmpty = workloadCount === 0
   const { headline, rationale } = portfolio.recommendation
   const horizonMonths = portfolio.inputs.horizonMonths
 
   const sources = Object.values(portfolio.provenance.curveSources)
   const firstSource = sources[0] ?? 'ornn_fixture'
-  const sourceLabel = firstSource === 'ornn_http' ? 'Ornn live' : 'Ornn fixture'
-  const sourceClass =
-    firstSource === 'ornn_http'
-      ? 'text-primary border border-primary/40'
-      : 'text-muted-foreground border border-border'
+  const sourceLabelUpper =
+    firstSource === 'ornn_http' ? 'ORNN LIVE' : 'ORNN FIXTURE'
 
   const savingUsd = portfolio.totals.savingUsd
-  const savingTone =
-    savingUsd > 0
-      ? 'text-primary'
-      : savingUsd < 0
-        ? 'text-destructive'
-        : 'text-foreground'
+  const savingPct = portfolio.totals.savingPct
+  const deltaTone: 'up' | 'down' | 'flat' =
+    savingUsd > 0 ? 'up' : savingUsd < 0 ? 'down' : 'flat'
 
-  const workloadCount = portfolio.provenance.workloadCount
   const workloadWord = workloadCount === 1 ? 'workload' : 'workloads'
 
+  const loadingBadge = loading ? (
+    <span className="pointer-events-none absolute right-2 top-2 z-10 animate-pulse text-xs text-muted-foreground">
+      recalculating…
+    </span>
+  ) : null
+
+  if (isEmpty) {
+    return (
+      <div className="relative">
+        {loadingBadge}
+        <div className={cn(loading && 'pointer-events-none opacity-60')}>
+          <WidgetCard label="INFRA-MAXXER'S CALL" glow>
+            <p className="imx-heading text-2xl leading-tight text-muted-foreground">
+              Pick at least one workload.
+            </p>
+          </WidgetCard>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <Card
-      className={cn(
-        'relative ring-1 ring-primary/25',
-        loading && 'opacity-60',
-      )}
-    >
-      {loading && (
-        <span className="pointer-events-none absolute right-4 top-4 text-xs text-muted-foreground">
-          recalculating…
-        </span>
-      )}
-
-      <CardHeader>
-        <CardTitle className="imx-heading text-2xl leading-tight">
-          {isEmpty ? 'Pick at least one workload.' : headline}
-        </CardTitle>
-        {!isEmpty && (
-          <CardDescription className="text-sm text-muted-foreground">
-            {rationale}
-          </CardDescription>
+    <div className="relative">
+      {loadingBadge}
+      <div
+        className={cn(
+          'flex flex-col gap-3',
+          loading && 'pointer-events-none opacity-60',
         )}
-      </CardHeader>
-
-      {!isEmpty && (
-        <CardContent className="space-y-5">
-          <div className="rounded-lg border border-border bg-background/40 p-4">
-            <div className="grid grid-cols-3 gap-4">
-              <Kpi
-                label={`Projected ${horizonMonths}-mo cost`}
-                value={formatUsd(portfolio.totals.strategyCostUsd)}
-              />
-              <Kpi
-                label="Savings vs on-demand"
-                value={formatSignedUsd(savingUsd)}
-                tone={savingTone}
-              />
-              <Kpi
-                label="% saved"
-                value={formatPct(portfolio.totals.savingPct)}
-              />
-            </div>
+      >
+        <WidgetCard
+          label="INFRA-MAXXER'S CALL"
+          glow
+          interactive={false}
+          action={<LiveBadge source={sourceLabelUpper} />}
+        >
+          <div className="flex flex-col gap-3">
+            <p className="imx-heading imx-gradient-text text-3xl leading-tight md:text-4xl">
+              {headline}
+            </p>
+            {rationale && (
+              <p className="max-w-2xl text-sm text-muted-foreground">
+                {rationale}
+              </p>
+            )}
           </div>
+        </WidgetCard>
 
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <StatWidget
+            label={`Projected ${horizonMonths}-mo cost`}
+            value={formatUsd(portfolio.totals.strategyCostUsd)}
+            hint={`vs. ${formatUsd(portfolio.totals.onDemandCostUsd)} on-demand`}
+          />
+          <StatWidget
+            label="Savings vs. on-demand"
+            value={formatSignedUsd(savingUsd)}
+            deltaTone={deltaTone}
+            delta={formatPct(savingPct)}
+            glow
+          />
+          <StatWidget
+            label="Time saved"
+            value={`${portfolio.timeSavedHours} h/yr`}
+            hint={`${workloadCount} workloads · quarterly cycle`}
+          />
+        </div>
+
+        <WidgetCard
+          label="STRATEGY COMPARISON"
+          action={
+            <span className="text-xs text-muted-foreground">
+              3 canonical strategies
+            </span>
+          }
+        >
           <ComparisonBars
             onDemand={portfolio.totals.onDemandCostUsd}
             reserveAll={portfolio.strategies.reserveNow.costUsd}
             smartBlend={portfolio.strategies.smartBlend.costUsd}
           />
-        </CardContent>
-      )}
+        </WidgetCard>
 
-      {!isEmpty && (
-        <CardFooter className="flex-wrap gap-2">
-          <Badge variant="secondary">
-            ~{portfolio.timeSavedHours} hrs/yr saved
-          </Badge>
-          <Badge variant="outline">
-            Monthly run-rate {formatUsd(portfolio.monthlyRunRateUsd)}
-          </Badge>
-          <Badge variant="outline">
-            {workloadCount} {workloadWord}
-          </Badge>
-          <Badge variant="ghost" className={sourceClass}>
-            {sourceLabel}
-          </Badge>
-        </CardFooter>
-      )}
-    </Card>
-  )
-}
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <WidgetCard label="EFFICIENCY">
+            <div className="flex items-center justify-center">
+              <Gauge
+                value={Math.max(0, savingPct)}
+                label="of on-demand cost saved"
+              />
+            </div>
+          </WidgetCard>
 
-interface KpiProps {
-  label: string
-  value: string
-  tone?: string
-}
-
-function Kpi({ label, value, tone }: KpiProps) {
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs uppercase tracking-wide text-muted-foreground">
-        {label}
-      </span>
-      <span className={cn('imx-heading text-2xl leading-tight', tone)}>
-        {value}
-      </span>
+          <WidgetCard label="LIVE POSTURE">
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="imx-mono-label">Ornn source</span>
+                <LiveBadge source={sourceLabelUpper} />
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="imx-mono-label">Monthly run-rate</span>
+                <span className="imx-heading text-lg">
+                  {formatUsd(portfolio.monthlyRunRateUsd)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="imx-mono-label">Workloads in scope</span>
+                <span className="imx-heading text-lg">
+                  {workloadCount} {workloadWord}
+                </span>
+              </div>
+            </div>
+          </WidgetCard>
+        </div>
+      </div>
     </div>
   )
 }

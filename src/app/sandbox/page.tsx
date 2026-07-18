@@ -6,20 +6,20 @@ import type {
   PortfolioOutput,
 } from '@/lib/engine/portfolio'
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from '@/components/ui/toggle-group'
-import { Label } from '@/components/ui/label'
+  BackButton,
+  Glossary,
+  LiveBadge,
+  NavBar,
+  WidgetCard,
+} from '@/components/imx/widget'
 import { SliderRow } from '@/components/imx/slider-row'
 import { WorkloadSelect } from '@/components/imx/workload-select'
 import { ScenarioToggle } from '@/components/imx/scenario-toggle'
 import { ImxCall } from '@/components/imx/imx-call'
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from '@/components/ui/toggle-group'
 
 interface Workload {
   id: string
@@ -54,10 +54,11 @@ export default function SandboxPage() {
     let cancelled = false
     fetch('/api/datadog/workloads')
       .then((r) => r.json())
-      .then((j: { workloads: Workload[] }) => {
+      .then((j: { workloads: Workload[] } | Workload[]) => {
         if (cancelled) return
-        setWorkloads(j.workloads)
-        setSelectedIds(j.workloads.map((w) => w.id))
+        const list = Array.isArray(j) ? j : j.workloads
+        setWorkloads(list)
+        setSelectedIds(list.map((w) => w.id))
       })
       .catch((e) => console.error('failed to load workloads', e))
     return () => {
@@ -65,26 +66,23 @@ export default function SandboxPage() {
     }
   }, [])
 
-  const fetchPortfolio = useCallback(
-    (inputs: PortfolioInputs) => {
-      setLoading(true)
-      fetch('/api/portfolio', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ inputs }),
+  const fetchPortfolio = useCallback((inputs: PortfolioInputs) => {
+    setLoading(true)
+    fetch('/api/portfolio', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ inputs }),
+    })
+      .then(async (r) => {
+        const j = await r.json()
+        if (!r.ok) throw new Error(j?.error ?? `HTTP ${r.status}`)
+        setPortfolio(j as PortfolioOutput)
       })
-        .then(async (r) => {
-          const j = await r.json()
-          if (!r.ok) throw new Error(j?.error ?? `HTTP ${r.status}`)
-          setPortfolio(j as PortfolioOutput)
-        })
-        .catch((e) => {
-          console.error('portfolio fetch failed', e)
-        })
-        .finally(() => setLoading(false))
-    },
-    [],
-  )
+      .catch((e) => {
+        console.error('portfolio fetch failed', e)
+      })
+      .finally(() => setLoading(false))
+  }, [])
 
   useEffect(() => {
     if (selectedIds.length === 0) return
@@ -118,25 +116,48 @@ export default function SandboxPage() {
     fetchPortfolio,
   ])
 
-  const gpuSummary = summarizeGpuTypes(workloads)
   const workloadsReady = workloads.length > 0
+  const liveSource: 'ORNN LIVE' | 'ORNN FIXTURE' | 'ORNN' = portfolio
+    ? portfolio.provenance.curveSources[
+        Object.keys(portfolio.provenance.curveSources)[0]
+      ] === 'ornn_http'
+      ? 'ORNN LIVE'
+      : 'ORNN FIXTURE'
+    : 'ORNN'
 
   return (
-    <main className="imx-grid min-h-screen p-6">
-      <header className="mx-auto mb-6 flex max-w-7xl items-baseline justify-between">
-        <span className="imx-heading text-lg text-primary">
-          INFRA-MAXXER — Sandbox
-        </span>
-        <span className="text-xs text-muted-foreground">{gpuSummary}</span>
-      </header>
+    <main className="imx-grid min-h-screen">
+      <NavBar />
+      <div className="mx-auto max-w-7xl px-6 py-6">
+        <div className="mb-3 flex items-center gap-2">
+          <BackButton />
+          <BackButton href="/forward" label="Back to Forward" />
+        </div>
+        <div className="mb-4 flex items-baseline justify-between">
+          <div className="flex items-baseline gap-3">
+            <h1 className="imx-heading imx-gradient-text text-2xl">
+              Sandbox
+            </h1>
+            <span className="text-sm text-muted-foreground">
+              Perturb inputs. Watch the optimal call move in real time.
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <LiveBadge source={liveSource} />
+          </div>
+        </div>
 
-      <div className="mx-auto grid max-w-7xl grid-cols-12 gap-6">
-        <section className="col-span-12 lg:col-span-5">
-          <Card>
-            <CardHeader>
-              <CardTitle className="imx-heading text-xl">Inputs</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
+        <div className="grid grid-cols-12 gap-4">
+          <section className="col-span-12 flex flex-col gap-4 lg:col-span-4">
+            <WidgetCard
+              label="WORKLOADS"
+              size="md"
+              action={
+                <span className="text-xs text-muted-foreground">
+                  {selectedIds.length}/{workloads.length}
+                </span>
+              }
+            >
               {workloadsReady ? (
                 <WorkloadSelect
                   workloads={workloads}
@@ -145,113 +166,108 @@ export default function SandboxPage() {
                 />
               ) : (
                 <div className="text-sm text-muted-foreground">
-                  loading workloads...
+                  Loading workloads...
                 </div>
               )}
+            </WidgetCard>
 
-              <SliderRow
-                label="Expected workload growth"
-                value={growthPctYr}
-                min={-50}
-                max={100}
-                step={5}
-                format={(v) => `${v >= 0 ? '+' : ''}${v}% / yr`}
-                hint="Larger = more compute demand."
-                onChange={setGrowth}
-              />
+            <WidgetCard label="INPUTS" size="md">
+              <div className="flex flex-col gap-5">
+                <SliderRow
+                  label="Expected workload growth"
+                  value={growthPctYr}
+                  min={-50}
+                  max={100}
+                  step={5}
+                  format={(v) => `${v >= 0 ? '+' : ''}${v}% / yr`}
+                  hint="Larger = more compute demand."
+                  onChange={setGrowth}
+                />
 
-              <SliderRow
-                label="Baseline share reserved"
-                value={baselineSharePct}
-                min={0}
-                max={100}
-                step={5}
-                format={(v) => `${v}%`}
-                hint="Portion of steady demand covered by the forward."
-                onChange={setBaseline}
-              />
+                <SliderRow
+                  label="Baseline share reserved"
+                  value={baselineSharePct}
+                  min={0}
+                  max={100}
+                  step={5}
+                  format={(v) => `${v}%`}
+                  hint="Portion of steady demand covered by the forward."
+                  onChange={setBaseline}
+                />
 
-              <SliderRow
-                label="Forward vs. today"
-                value={forwardVsTodayPct}
-                min={-60}
-                max={0}
-                step={1}
-                format={(v) => `${v}%`}
-                hint="How much cheaper the forward is vs spot."
-                onChange={setForward}
-              />
+                <SliderRow
+                  label="Forward vs. today"
+                  value={forwardVsTodayPct}
+                  min={-60}
+                  max={0}
+                  step={1}
+                  format={(v) => `${v}%`}
+                  hint="How much cheaper the forward is vs spot."
+                  onChange={setForward}
+                />
 
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-sm text-foreground">Horizon</Label>
-                <ToggleGroup
-                  className="w-full"
-                  size="sm"
-                  variant="outline"
-                  orientation="horizontal"
-                  value={[String(horizonMonths)]}
-                  onValueChange={(next) => {
-                    const picked = next[0]
-                    const n = Number(picked)
-                    if (
-                      n === 3 ||
-                      n === 6 ||
-                      n === 12 ||
-                      n === 36
-                    ) {
-                      setHorizonMonths(n)
-                    }
-                  }}
-                >
-                  {HORIZONS.map((h) => (
-                    <ToggleGroupItem
-                      key={h}
-                      value={String(h)}
-                      aria-label={`Horizon ${HORIZON_LABELS[h]}`}
-                      className="flex-1"
-                    >
-                      {HORIZON_LABELS[h]}
-                    </ToggleGroupItem>
-                  ))}
-                </ToggleGroup>
+                <div>
+                  <div className="imx-mono-label mb-1.5">HORIZON</div>
+                  <ToggleGroup
+                    className="w-full"
+                    size="sm"
+                    variant="outline"
+                    orientation="horizontal"
+                    value={[String(horizonMonths)]}
+                    onValueChange={(next) => {
+                      const picked = next[0]
+                      const n = Number(picked)
+                      if (n === 3 || n === 6 || n === 12 || n === 36) {
+                        setHorizonMonths(n)
+                      }
+                    }}
+                  >
+                    {HORIZONS.map((h) => (
+                      <ToggleGroupItem
+                        key={h}
+                        value={String(h)}
+                        aria-label={`Horizon ${HORIZON_LABELS[h]}`}
+                        className="flex-1"
+                      >
+                        {HORIZON_LABELS[h]}
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
+                </div>
+
+                <div>
+                  <div className="imx-mono-label mb-1.5">SCENARIO</div>
+                  <ScenarioToggle value={scenario} onChange={setScenario} />
+                </div>
               </div>
+            </WidgetCard>
+          </section>
 
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-sm text-foreground">Scenario</Label>
-                <ScenarioToggle value={scenario} onChange={setScenario} />
-              </div>
-            </CardContent>
-          </Card>
-        </section>
+          <section className="col-span-12 lg:col-span-8">
+            {portfolio ? (
+              <ImxCall portfolio={portfolio} loading={loading} />
+            ) : (
+              <WidgetCard glow label="INFRA-MAXXER'S CALL">
+                <div className="p-6 text-muted-foreground">
+                  {workloadsReady ? 'Computing...' : 'Loading workloads...'}
+                </div>
+              </WidgetCard>
+            )}
 
-        <section className="col-span-12 space-y-4 lg:col-span-7">
-          {portfolio ? (
-            <ImxCall portfolio={portfolio} loading={loading} />
-          ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle className="imx-heading text-xl text-muted-foreground">
-                  {workloadsReady ? 'Computing…' : 'loading workloads...'}
-                </CardTitle>
-              </CardHeader>
-            </Card>
-          )}
+            <Glossary className="mt-4" title="HOW TO READ THIS" />
 
-          <p className="text-xs text-muted-foreground">
-            About this call: <span className="font-mono">ornn_http</span> means
-            the recommendation used a live Ornn quote;{' '}
-            <span className="font-mono">ornn_fixture</span> is the seeded market
-            path we ship with the demo.
-          </p>
-        </section>
+            <WidgetCard label="PROVENANCE" size="sm" className="mt-4">
+              <p className="text-xs text-muted-foreground">
+                About this call:{' '}
+                <span className="font-mono">ornn_http</span> means the
+                recommendation used a live Ornn quote;{' '}
+                <span className="font-mono">ornn_fixture</span> is the
+                seeded market path we ship with the demo.
+              </p>
+            </WidgetCard>
+          </section>
+        </div>
       </div>
     </main>
   )
-}
-
-function summarizeGpuTypes(workloads: Workload[]): string {
-  if (workloads.length === 0) return 'portfolio'
-  const seen = new Set<string>()
-  for (const w of workloads) seen.add(w.gpuType)
-  return `${[...seen].join(' · ')} · portfolio`
 }
