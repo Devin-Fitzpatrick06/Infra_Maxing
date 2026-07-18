@@ -1,74 +1,43 @@
-import Link from 'next/link'
+import { Zap } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { buttonVariants } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 
 export default function Home() {
-  const supabaseConfigured = Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  )
-  const ornnConfigured = Boolean(process.env.ORNN_API_KEY)
-
   return (
-    <main className="mx-auto flex min-h-svh max-w-3xl flex-col items-center justify-center gap-8 p-8">
-      <div className="text-center">
-        <h1 className="text-4xl font-semibold tracking-tight">GPU Reservation Optimizer</h1>
-        <p className="mt-2 text-muted-foreground">
-          Ornn forward curves × your GPU telemetry — time reservations, quantify savings.
+    <main className="imx-grid relative flex min-h-screen flex-col overflow-hidden">
+      <div className="mx-auto my-auto flex max-w-4xl flex-col items-center gap-6 px-6 py-24 text-center">
+        <Badge variant="outline" className="gap-1.5">
+          <Zap className="h-3.5 w-3.5" />
+          Live Ornn forward × your GPU telemetry
+        </Badge>
+
+        <h1 className="imx-heading imx-glow text-6xl leading-none tracking-tighter md:text-8xl">
+          INFRA-MAXXER
+        </h1>
+
+        <h2 className="imx-heading text-2xl text-primary md:text-4xl">
+          Reserve GPUs smarter.
+        </h2>
+
+        <p className="max-w-2xl text-muted-foreground">
+          Real-time Ornn forward curves × your GPU telemetry. Decide the optimal reserve strategy and quantify savings.
         </p>
+
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <a href="/forward" className={buttonVariants({ size: 'lg' })}>
+            Enter forward →
+          </a>
+          <a href="/sandbox" className={buttonVariants({ size: 'lg', variant: 'outline' })}>
+            Open sandbox
+          </a>
+        </div>
       </div>
 
-      <Card className="w-full">
-        <CardHeader>
-          <CardTitle>Environment</CardTitle>
-          <CardDescription>
-            Backend proof of life. Fill in <code>.env.local</code> to enable persistence.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          <div>
-            Supabase:{' '}
-            <span
-              className={
-                supabaseConfigured
-                  ? 'font-medium text-green-600 dark:text-green-400'
-                  : 'font-medium text-amber-600 dark:text-amber-400'
-              }
-            >
-              {supabaseConfigured ? 'configured' : 'not set — persistence disabled'}
-            </span>
-          </div>
-          <div>
-            Ornn API key:{' '}
-            <span
-              className={
-                ornnConfigured
-                  ? 'font-medium text-green-600 dark:text-green-400'
-                  : 'font-medium text-amber-600 dark:text-amber-400'
-              }
-            >
-              {ornnConfigured ? 'detected' : 'using fixture curve'}
-            </span>
-          </div>
-          <div>
-            Datadog: <span className="font-medium">synthetic (fixture)</span>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex gap-3">
-        <Link className={buttonVariants({ variant: 'default' })} href="/sandbox">
-          Open sandbox
-        </Link>
-        <Link className={buttonVariants({ variant: 'outline' })} href="/debug">
-          Debug (API dumps)
-        </Link>
+      <div className="mt-auto flex items-center justify-between px-6 py-4 text-xs text-muted-foreground">
+        <span>Built for Builders Cup X · 2026-07-18</span>
+        <a href="/debug" className="hover:text-foreground">
+          engineering debug
+        </a>
       </div>
     </main>
   )

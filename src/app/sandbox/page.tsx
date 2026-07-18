@@ -1,290 +1,257 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type {
+  PortfolioInputs,
+  PortfolioOutput,
+} from '@/lib/engine/portfolio'
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from '@/components/ui/toggle-group'
+import { Label } from '@/components/ui/label'
+import { SliderRow } from '@/components/imx/slider-row'
+import { WorkloadSelect } from '@/components/imx/workload-select'
+import { ScenarioToggle } from '@/components/imx/scenario-toggle'
+import { ImxCall } from '@/components/imx/imx-call'
 
 interface Workload {
   id: string
   name: string
   gpuType: string
-  archetype: string
+  archetype?: string
 }
 
-interface RecommendResponse {
-  workload: { id: string; name: string; gpuType: string }
-  recommendation: {
-    reservedPct: number
-    horizonMonths: number
-    gpuType: string
-    baselineCostUsd: number
-    strategyCostUsd: number
-    mix: Array<{ monthOffset: number; reservedHours: number; onDemandHours: number; costUsd: number }>
-  }
-  savingEstimateUsd: number
-  confidence: { low: number; high: number }
-  rationale: string
-  breakEvenMonthOffset: number | null
-  provenance: {
-    ornn: { source: string; fetchedAt: string; horizonDays: number; pointCount: number }
-    datadog: { from: string; to: string; queries: string[] }
-    engine: { curvePointCount: number; usageDayCount: number; scenario: string; horizonMonths: number; reservedPct: number }
-  }
-}
+type HorizonMonths = 3 | 6 | 12 | 36
 
-const HORIZONS = [3, 6, 12, 36] as const
-const SCENARIOS = ['market', 'bull', 'bear', 'flat'] as const
+const HORIZONS: HorizonMonths[] = [3, 6, 12, 36]
+const HORIZON_LABELS: Record<HorizonMonths, string> = {
+  3: '3M',
+  6: '6M',
+  12: '1Y',
+  36: '3Y',
+}
 
 export default function SandboxPage() {
   const [workloads, setWorkloads] = useState<Workload[]>([])
-  const [workloadId, setWorkloadId] = useState<string>('')
-  const [reservedPct, setReservedPct] = useState(0.6)
-  const [horizonMonths, setHorizonMonths] = useState<3 | 6 | 12 | 36>(6)
-  const [usageBias, setUsageBias] = useState(0)
-  const [scenario, setScenario] = useState<(typeof SCENARIOS)[number]>('market')
-  const [result, setResult] = useState<RecommendResponse | null>(null)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [horizonMonths, setHorizonMonths] = useState<HorizonMonths>(12)
+  const [scenario, setScenario] = useState<'market' | 'stress'>('market')
+  const [growthPctYr, setGrowth] = useState(45)
+  const [baselineSharePct, setBaseline] = useState(65)
+  const [forwardVsTodayPct, setForward] = useState(-27)
+  const [portfolio, setPortfolio] = useState<PortfolioOutput | null>(null)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const debounceRef = useRef<number | null>(null)
 
   useEffect(() => {
+    let cancelled = false
     fetch('/api/datadog/workloads')
       .then((r) => r.json())
       .then((j: { workloads: Workload[] }) => {
+        if (cancelled) return
         setWorkloads(j.workloads)
-        if (j.workloads[0]) setWorkloadId(j.workloads[0].id)
+        setSelectedIds(j.workloads.map((w) => w.id))
       })
-      .catch((e) => setError(String(e)))
+      .catch((e) => console.error('failed to load workloads', e))
+    return () => {
+      cancelled = true
+    }
   }, [])
 
-  const workload = useMemo(
-    () => workloads.find((w) => w.id === workloadId) ?? null,
-    [workloads, workloadId],
-  )
-
-  useEffect(() => {
-    if (!workloadId || !workload) return
-    if (debounceRef.current) window.clearTimeout(debounceRef.current)
-    debounceRef.current = window.setTimeout(() => {
+  const fetchPortfolio = useCallback(
+    (inputs: PortfolioInputs) => {
       setLoading(true)
-      setError(null)
-      fetch('/api/recommend', {
+      fetch('/api/portfolio', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          workloadId,
-          inputs: {
-            reservedPct,
-            horizonMonths,
-            usageBias,
-            scenario,
-            gpuType: workload.gpuType,
-          },
-        }),
+        body: JSON.stringify({ inputs }),
       })
         .then(async (r) => {
           const j = await r.json()
-          if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`)
-          setResult(j as RecommendResponse)
+          if (!r.ok) throw new Error(j?.error ?? `HTTP ${r.status}`)
+          setPortfolio(j as PortfolioOutput)
         })
-        .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+        .catch((e) => {
+          console.error('portfolio fetch failed', e)
+        })
         .finally(() => setLoading(false))
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (selectedIds.length === 0) return
+    if (debounceRef.current !== null) {
+      window.clearTimeout(debounceRef.current)
+    }
+    const inputs: PortfolioInputs = {
+      workloadIds: selectedIds,
+      horizonMonths,
+      scenario,
+      growthPctYr,
+      baselineSharePct,
+      forwardVsTodayPct,
+    }
+    debounceRef.current = window.setTimeout(() => {
+      fetchPortfolio(inputs)
     }, 150)
-  }, [workloadId, reservedPct, horizonMonths, usageBias, scenario, workload])
+    return () => {
+      if (debounceRef.current !== null) {
+        window.clearTimeout(debounceRef.current)
+        debounceRef.current = null
+      }
+    }
+  }, [
+    selectedIds,
+    horizonMonths,
+    scenario,
+    growthPctYr,
+    baselineSharePct,
+    forwardVsTodayPct,
+    fetchPortfolio,
+  ])
+
+  const gpuSummary = summarizeGpuTypes(workloads)
+  const workloadsReady = workloads.length > 0
 
   return (
-    <main className="mx-auto max-w-7xl p-6">
-      <header className="mb-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Scenario sandbox</h1>
-        <p className="text-muted-foreground text-sm">
-          Stub layout — one live slider, other controls wired but styling minimal. The real sandbox is coming.
-        </p>
+    <main className="imx-grid min-h-screen p-6">
+      <header className="mx-auto mb-6 flex max-w-7xl items-baseline justify-between">
+        <span className="imx-heading text-lg text-primary">
+          INFRA-MAXXER — Sandbox
+        </span>
+        <span className="text-xs text-muted-foreground">{gpuSummary}</span>
       </header>
 
-      <div className="grid grid-cols-12 gap-4">
-        <section className="col-span-12 lg:col-span-3 rounded-lg border p-4 space-y-5">
-          <div>
-            <label className="text-xs uppercase tracking-wide text-muted-foreground">Workload</label>
-            <select
-              className="mt-1 w-full rounded border bg-background px-2 py-1 text-sm"
-              value={workloadId}
-              onChange={(e) => setWorkloadId(e.target.value)}
-            >
-              {workloads.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name} ({w.gpuType} · {w.archetype})
-                </option>
-              ))}
-            </select>
-          </div>
+      <div className="mx-auto grid max-w-7xl grid-cols-12 gap-6">
+        <section className="col-span-12 lg:col-span-5">
+          <Card>
+            <CardHeader>
+              <CardTitle className="imx-heading text-xl">Inputs</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {workloadsReady ? (
+                <WorkloadSelect
+                  workloads={workloads}
+                  selectedIds={selectedIds}
+                  onChange={setSelectedIds}
+                />
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  loading workloads...
+                </div>
+              )}
 
-          <div>
-            <label className="text-xs uppercase tracking-wide text-muted-foreground">
-              % steady-load reserved: <span className="font-mono">{(reservedPct * 100).toFixed(0)}%</span>
-            </label>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={Math.round(reservedPct * 100)}
-              onChange={(e) => setReservedPct(Number(e.target.value) / 100)}
-              className="mt-2 w-full"
-            />
-          </div>
+              <SliderRow
+                label="Expected workload growth"
+                value={growthPctYr}
+                min={-50}
+                max={100}
+                step={5}
+                format={(v) => `${v >= 0 ? '+' : ''}${v}% / yr`}
+                hint="Larger = more compute demand."
+                onChange={setGrowth}
+              />
 
-          <div>
-            <label className="text-xs uppercase tracking-wide text-muted-foreground">Horizon (months)</label>
-            <div className="mt-2 flex gap-2">
-              {HORIZONS.map((h) => (
-                <button
-                  key={h}
-                  onClick={() => setHorizonMonths(h)}
-                  className={`rounded border px-3 py-1 text-sm ${
-                    horizonMonths === h ? 'bg-foreground text-background' : ''
-                  }`}
+              <SliderRow
+                label="Baseline share reserved"
+                value={baselineSharePct}
+                min={0}
+                max={100}
+                step={5}
+                format={(v) => `${v}%`}
+                hint="Portion of steady demand covered by the forward."
+                onChange={setBaseline}
+              />
+
+              <SliderRow
+                label="Forward vs. today"
+                value={forwardVsTodayPct}
+                min={-60}
+                max={0}
+                step={1}
+                format={(v) => `${v}%`}
+                hint="How much cheaper the forward is vs spot."
+                onChange={setForward}
+              />
+
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-sm text-foreground">Horizon</Label>
+                <ToggleGroup
+                  className="w-full"
+                  size="sm"
+                  variant="outline"
+                  orientation="horizontal"
+                  value={[String(horizonMonths)]}
+                  onValueChange={(next) => {
+                    const picked = next[0]
+                    const n = Number(picked)
+                    if (
+                      n === 3 ||
+                      n === 6 ||
+                      n === 12 ||
+                      n === 36
+                    ) {
+                      setHorizonMonths(n)
+                    }
+                  }}
                 >
-                  {h}
-                </button>
-              ))}
-            </div>
-          </div>
+                  {HORIZONS.map((h) => (
+                    <ToggleGroupItem
+                      key={h}
+                      value={String(h)}
+                      aria-label={`Horizon ${HORIZON_LABELS[h]}`}
+                      className="flex-1"
+                    >
+                      {HORIZON_LABELS[h]}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+              </div>
 
-          <div>
-            <label className="text-xs uppercase tracking-wide text-muted-foreground">
-              Usage bias: <span className="font-mono">{(usageBias * 100).toFixed(0)}%</span>
-            </label>
-            <input
-              type="range"
-              min={-25}
-              max={25}
-              value={Math.round(usageBias * 100)}
-              onChange={(e) => setUsageBias(Number(e.target.value) / 100)}
-              className="mt-2 w-full"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs uppercase tracking-wide text-muted-foreground">Scenario</label>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {SCENARIOS.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setScenario(s)}
-                  className={`rounded border px-3 py-1 text-sm capitalize ${
-                    scenario === s ? 'bg-foreground text-background' : ''
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-sm text-foreground">Scenario</Label>
+                <ScenarioToggle value={scenario} onChange={setScenario} />
+              </div>
+            </CardContent>
+          </Card>
         </section>
 
-        <section className="col-span-12 lg:col-span-6 rounded-lg border p-4">
-          <div className="text-xs uppercase tracking-wide text-muted-foreground">Projection</div>
-          {result ? (
-            <MixChart mix={result.recommendation.mix} />
+        <section className="col-span-12 space-y-4 lg:col-span-7">
+          {portfolio ? (
+            <ImxCall portfolio={portfolio} loading={loading} />
           ) : (
-            <div className="mt-4 h-64 rounded border-dashed border grid place-items-center text-muted-foreground text-sm">
-              (chart placeholder — real chart coming in the sandbox phase)
-            </div>
+            <Card>
+              <CardHeader>
+                <CardTitle className="imx-heading text-xl text-muted-foreground">
+                  {workloadsReady ? 'Computing…' : 'loading workloads...'}
+                </CardTitle>
+              </CardHeader>
+            </Card>
           )}
-          <pre className="mt-4 max-h-56 overflow-auto rounded bg-muted p-3 text-[11px] leading-relaxed">
-            {result ? JSON.stringify(result.recommendation.mix, null, 2) : 'loading…'}
-          </pre>
-        </section>
 
-        <aside className="col-span-12 lg:col-span-3 rounded-lg border p-4 space-y-3">
-          <div className="text-xs uppercase tracking-wide text-muted-foreground">Recommendation</div>
-          {error ? (
-            <div className="text-sm text-red-500">{error}</div>
-          ) : !result ? (
-            <div className="text-sm text-muted-foreground">
-              {loading ? 'computing…' : 'waiting for inputs…'}
-            </div>
-          ) : (
-            <>
-              <div>
-                <div className="text-xs text-muted-foreground">Projected saving</div>
-                <div className="text-2xl font-semibold">
-                  ${result.savingEstimateUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  band ${result.confidence.low.toLocaleString(undefined, { maximumFractionDigits: 0 })} –
-                  ${' '}
-                  ${result.confidence.high.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Break-even month</div>
-                <div className="text-sm">
-                  {result.breakEvenMonthOffset === null
-                    ? 'never in horizon'
-                    : `month ${result.breakEvenMonthOffset + 1}`}
-                </div>
-              </div>
-              <div className="pt-2 border-t">
-                <div className="text-xs text-muted-foreground">Rationale</div>
-                <p className="text-xs leading-relaxed">{result.rationale}</p>
-              </div>
-              <button
-                disabled
-                title="Adopt scenario — wired in the real sandbox phase"
-                className="mt-2 w-full rounded border px-3 py-2 text-sm opacity-50"
-              >
-                Adopt this scenario
-              </button>
-            </>
-          )}
-        </aside>
-
-        <section className="col-span-12 rounded-lg border p-4">
-          <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
-            Evidence
-          </div>
-          {result ? (
-            <ul className="text-[11px] font-mono grid gap-1 md:grid-cols-2">
-              <li>Ornn source: {result.provenance.ornn.source}</li>
-              <li>Ornn fetchedAt: {result.provenance.ornn.fetchedAt}</li>
-              <li>Ornn horizonDays: {result.provenance.ornn.horizonDays}</li>
-              <li>Ornn pointCount: {result.provenance.ornn.pointCount}</li>
-              <li>Datadog window: {result.provenance.datadog.from} → {result.provenance.datadog.to}</li>
-              <li>Engine scenario: {result.provenance.engine.scenario}</li>
-              {result.provenance.datadog.queries.map((q, i) => (
-                <li key={i} className="col-span-2 truncate">DD: {q}</li>
-              ))}
-            </ul>
-          ) : (
-            <div className="text-muted-foreground text-xs">(nothing yet)</div>
-          )}
+          <p className="text-xs text-muted-foreground">
+            About this call: <span className="font-mono">ornn_http</span> means
+            the recommendation used a live Ornn quote;{' '}
+            <span className="font-mono">ornn_fixture</span> is the seeded market
+            path we ship with the demo.
+          </p>
         </section>
       </div>
     </main>
   )
 }
 
-function MixChart({
-  mix,
-}: {
-  mix: Array<{ monthOffset: number; reservedHours: number; onDemandHours: number; costUsd: number }>
-}) {
-  const max = Math.max(...mix.map((m) => m.costUsd), 1)
-  return (
-    <div className="mt-4 flex h-64 items-end gap-1 rounded border p-2">
-      {mix.map((m) => {
-        const h = (m.costUsd / max) * 100
-        return (
-          <div key={m.monthOffset} className="flex flex-1 flex-col items-center gap-1">
-            <div
-              className="w-full rounded-t bg-foreground"
-              style={{ height: `${h}%` }}
-              title={`M${m.monthOffset + 1}: $${m.costUsd.toFixed(0)}`}
-            />
-            <div className="text-[9px] text-muted-foreground">
-              M{m.monthOffset + 1}
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
+function summarizeGpuTypes(workloads: Workload[]): string {
+  if (workloads.length === 0) return 'portfolio'
+  const seen = new Set<string>()
+  for (const w of workloads) seen.add(w.gpuType)
+  return `${[...seen].join(' · ')} · portfolio`
 }
